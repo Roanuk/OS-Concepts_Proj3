@@ -5,6 +5,7 @@
 #include <cstring>
 #include <stdio.h>
 #include <stdlib.h>
+#include <queue>
 
 #define FCFS "FCFS"
 #define RR "RR"
@@ -114,6 +115,23 @@ class scheduleFCFS : public Scheduler
 		}
 };
 
+class scheduleRR : public Scheduler
+{
+	public:
+		int quantum;
+		scheduleRR(vector<Job>* JobList, int Quantum) : Scheduler(JobList), quantum(Quantum) {}
+		
+		void processJobs()
+		{
+			string buffer = "Round Robin Graph";
+			outputGraph[0].resize(buffer.size(),' ');
+			for(int i = 0; i < buffer.size(); i++)
+			{
+				outputGraph[0][i] = buffer[i];
+			}				
+		}
+};
+
 class OS
 {
 	public:
@@ -154,7 +172,7 @@ class OS
 					break;
 
 				case rr:
-
+						return new scheduleRR(&jobList, quantum);
 					break;
 
 				case spn:
@@ -206,11 +224,11 @@ int main (int argc, char* argv[])
 	}
 	else if (schedulerString == RR)
 	{
-			schedulerType = rr;
+		schedulerType = rr;
 	}
 	else if (schedulerString == SPN)
 	{
-			schedulerType = spn;
+		schedulerType = spn;
 	}
 	else if (schedulerString == SRT)
 	{
