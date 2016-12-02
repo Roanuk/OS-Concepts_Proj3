@@ -38,10 +38,12 @@ class Job
 {
 	public:
 		string name;
-		int arrivalT, durationT, executionT;
+		int arrivalT, durationT, executionT, ID;
+		bool acknowledged;
 		Job(string Name, int ArrivalT, int DurationT) : name(Name), arrivalT(ArrivalT), durationT(DurationT)
 		{
 			executionT = 0;
+			acknowledged = false;
 		}
 		
 		//standard version of run continues until completion
@@ -54,7 +56,8 @@ class Job
 		string run(int slices)
 		{
 			int runSlices = 0;
-			string returner(min(durationT,slices),' ');
+			acknowledged = true;
+			string returner(min(durationT-executionT,slices),' ');
 			while(executionT < durationT && runSlices < slices)
 			{
 				returner[runSlices] = name[0];
@@ -107,11 +110,12 @@ class scheduleFCFS : public Scheduler
 				for(inner = 0; inner < buffer.size(); inner++)
 				{
 					outputGraph[outer][inner+totalT] = buffer[inner];
-				}								
-				buffer = (*jobList)[outer].run();
+				}							
 				totalT += outer == 0 ? 0 : inner;
+				totalT += max(0,(*jobList)[outer].arrivalT-totalT); //assumes that jobs arrive in order (mentioned in class)
+				(*jobList)[outer].ID = outer;
+				buffer = (*jobList)[outer].run();
 			}
-
 		}
 };
 
@@ -129,6 +133,39 @@ class scheduleRR : public Scheduler
 			{
 				outputGraph[0][i] = buffer[i];
 			}				
+			queue<Job*> jobQue;
+			Job* running = NULL;
+			int remainingT, totalT = 0;
+			do{
+				remainingT = 0;
+				for(int jobI = 0; jobI < (*jobList).size(); jobI++)
+				{
+					remainingT += (*jobList)[jobI].durationT;
+					remainingT -= (*jobList)[jobI].executionT;
+					if(!(*jobList)[jobI].acknowledged && (*jobList)[jobI].arrivalT <= totalT)
+					{
+						(*jobList)[jobI].ID = jobI;
+						jobQue.push(&((*jobList)[jobI])); //ensures job is not added to que until it arrives
+						(*jobList)[jobI].acknowledged = true; //ensures job is not added more than once to que
+					}
+				}
+				if(running && running->executionT < running->durationT)
+				{
+					jobQue.push(running);
+				}
+				if(!jobQue.empty())
+				{
+					running = jobQue.front();
+					jobQue.pop(); //que is wierd and front is like peek and, pop returns void?					
+					buffer = running->run(min(quantum, running->durationT - running->executionT)); //min is redundant verification of not over running
+					outputGraph[1+running->ID].resize(buffer.size()+totalT,' ');
+					for(int inner = 0; inner < buffer.size(); inner++)
+					{
+						outputGraph[1+running->ID][totalT] = buffer[inner];
+						totalT++;
+					}
+				}
+			}while(remainingT > 0);
 		}
 };
 
