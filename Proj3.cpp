@@ -68,6 +68,24 @@ class Job
 		}
 };
 
+class ShortestNext
+{
+	public:
+		bool operator() (Job* a, Job* b)
+		{
+			int aRemainingT =  a->durationT-a->executionT;
+			int bRemainingT =  b->durationT-b->executionT;
+			if(aRemainingT == bRemainingT)
+			{
+				return a->arrivalT > b->arrivalT; //return longest waiting with priority if remaining time is equal
+			}
+			else
+			{
+				return  aRemainingT > bRemainingT;
+			}
+		}
+};
+
 class Scheduler 
 {
 	public:
@@ -165,6 +183,67 @@ class scheduleRR : public Scheduler
 						totalT++;
 					}
 				}
+				else
+				{
+					totalT++;
+				}
+			}while(remainingT > 0);
+		}
+};
+
+class scheduleSRT : public Scheduler
+{
+	public:
+		scheduleSRT(vector<Job>* JobList) : Scheduler(JobList) {}
+
+		void processJobs()
+		{
+			string buffer = "Shortest Remaining Time Graph";
+			outputGraph[0].resize(buffer.size(),' ');
+			for(int i = 0; i < buffer.size(); i++)
+			{
+				outputGraph[0][i] = buffer[i];
+			}
+			priority_queue<Job*,vector<Job*>,ShortestNext> jobQue;
+			Job* running = NULL;
+			int remainingT, totalT = 0, timeTilNext;				
+			do{				
+				remainingT = 0;
+				for(int jobI = 0; jobI < (*jobList).size(); jobI++)
+				{
+					remainingT += (*jobList)[jobI].durationT;
+					remainingT -= (*jobList)[jobI].executionT;
+					if(!(*jobList)[jobI].acknowledged && (*jobList)[jobI].arrivalT <= totalT)
+					{
+						(*jobList)[jobI].ID = jobI;
+						jobQue.push(&((*jobList)[jobI])); //ensures job is not added to que until it arrives
+						(*jobList)[jobI].acknowledged = true; //ensures job is not added more than once to que
+					}
+					else if(!(*jobList)[jobI].acknowledged)
+					{
+						timeTilNext = min(timeTilNext,(*jobList)[jobI].arrivalT - totalT);
+					}
+				}
+				if(!jobQue.empty())
+				{
+					running = jobQue.top();
+					jobQue.pop(); //que is wierd and front is like peek and, pop returns void?					
+					buffer = running->run(min(timeTilNext, running->durationT - running->executionT)); //min is redundant verification of not over running
+					outputGraph[1+running->ID].resize(buffer.size()+totalT,' ');
+					for(int inner = 0; inner < buffer.size(); inner++)
+					{
+						outputGraph[1+running->ID][totalT] = buffer[inner];
+						totalT++;
+					}						
+					if(running->executionT < running->durationT) //replace job if being preempted
+					{
+						jobQue.push(running);
+					}
+				}
+				else
+				{
+					totalT++;
+				}
 			}while(remainingT > 0);
 		}
 };
@@ -213,11 +292,11 @@ class OS
 					break;
 
 				case spn:
-
+						//return new scheduleSPN(&jobList);
 					break;
 
 				case srt:
-
+						return new scheduleSRT(&jobList);
 					break;
 
 				case hrrn:
