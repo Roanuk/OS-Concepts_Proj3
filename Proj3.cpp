@@ -191,6 +191,55 @@ class scheduleRR : public Scheduler
 		}
 };
 
+class scheduleSPN : public Scheduler
+{
+	public:
+		scheduleSPN(vector<Job>* JobList) : Scheduler(JobList) {}
+
+		void processJobs()
+		{
+			string buffer = "Shortest Process Next Graph";
+			outputGraph[0].resize(buffer.size(),' ');
+			for(int i = 0; i < buffer.size(); i++)
+			{
+				outputGraph[0][i] = buffer[i];
+			}
+			priority_queue<Job*,vector<Job*>,ShortestNext> jobQue;
+			Job* running = NULL;
+			int remainingT, totalT = 0, timeTilNext;				
+			do{				
+				remainingT = 0;
+				for(int jobI = 0; jobI < (*jobList).size(); jobI++)
+				{
+					remainingT += (*jobList)[jobI].durationT;
+					remainingT -= (*jobList)[jobI].executionT;
+					if(!(*jobList)[jobI].acknowledged && (*jobList)[jobI].arrivalT <= totalT)
+					{
+						(*jobList)[jobI].ID = jobI;
+						jobQue.push(&((*jobList)[jobI])); //ensures job is not added to que until it arrives
+						(*jobList)[jobI].acknowledged = true; //ensures job is not added more than once to que
+					}
+				}
+				if(!jobQue.empty())
+				{
+					running = jobQue.top();
+					jobQue.pop(); //que is wierd and front is like peek and, pop returns void?					
+					buffer = running->run(); //run til completion == run(durationT)
+					outputGraph[1+running->ID].resize(buffer.size()+totalT,' ');
+					for(int inner = 0; inner < buffer.size(); inner++)
+					{
+						outputGraph[1+running->ID][totalT] = buffer[inner];
+						totalT++;
+					}
+				}
+				else
+				{
+					totalT++;
+				}
+			}while(remainingT > 0);
+		}
+};
+
 class scheduleSRT : public Scheduler
 {
 	public:
@@ -292,7 +341,7 @@ class OS
 					break;
 
 				case spn:
-						//return new scheduleSPN(&jobList);
+						return new scheduleSPN(&jobList);
 					break;
 
 				case srt:
