@@ -40,6 +40,7 @@ class Job
 		string name;
 		int arrivalT, durationT, executionT, ID;
 		bool acknowledged;
+		int* totalTp;
 		Job(string Name, int ArrivalT, int DurationT) : name(Name), arrivalT(ArrivalT), durationT(DurationT)
 		{
 			executionT = 0;
@@ -82,6 +83,28 @@ class ShortestNext
 			else
 			{
 				return  aRemainingT > bRemainingT;
+			}
+		}
+};
+
+class LargestResponseNext
+{
+	public:
+		bool operator() (Job* a, Job* b)
+		{
+			float aResponseT =  *(a->totalTp) - a->arrivalT + a->durationT;
+			aResponseT /= a->durationT;
+			//printf("%c:[tT(%i)-aT(%i)+dT(%i)]/dT(%i)=rT(%f)\n", a->name[0], *(a->totalTp), a->arrivalT, a->durationT, a->durationT,aResponseT);
+			float bResponseT =  *(b->totalTp) - b->arrivalT + b->durationT;	
+			bResponseT /= b->durationT;		
+			//printf("%c:[tT(%i)-aT(%i)+dT(%i)]/dT(%i)=rT(%f)\n", b->name[0], *(b->totalTp), b->arrivalT, b->durationT, b->durationT,bResponseT);
+			if(aResponseT == bResponseT)
+			{
+				return a->arrivalT > b->arrivalT; //return longest waiting with priority if remaining time is equal
+			}
+			else
+			{
+				return  aResponseT < bResponseT;
 			}
 		}
 };
@@ -206,7 +229,7 @@ class scheduleSPN : public Scheduler
 			}
 			priority_queue<Job*,vector<Job*>,ShortestNext> jobQue;
 			Job* running = NULL;
-			int remainingT, totalT = 0, timeTilNext;				
+			int remainingT, totalT = 0;				
 			do{				
 				remainingT = 0;
 				for(int jobI = 0; jobI < (*jobList).size(); jobI++)
@@ -297,6 +320,59 @@ class scheduleSRT : public Scheduler
 		}
 };
 
+class scheduleHRRN : public Scheduler
+{
+	public:
+		scheduleHRRN(vector<Job>* JobList) : Scheduler(JobList) {}
+
+		void processJobs()
+		{
+			string buffer = "Highest Response Ratio Next Graph";
+			outputGraph[0].resize(buffer.size(),' ');
+			for(int i = 0; i < buffer.size(); i++)
+			{
+				outputGraph[0][i] = buffer[i];
+			}
+			priority_queue<Job*,vector<Job*>,LargestResponseNext> jobQue;
+			Job* running = NULL;
+			int remainingT, totalT = 0;				
+			do{				
+				remainingT = 0;
+				for(int jobI = 0; jobI < (*jobList).size(); jobI++)
+				{
+					if(totalT == 0)
+					{
+						(*jobList)[jobI].totalTp = &totalT;
+					}
+					remainingT += (*jobList)[jobI].durationT;
+					remainingT -= (*jobList)[jobI].executionT;
+					if(!(*jobList)[jobI].acknowledged && (*jobList)[jobI].arrivalT <= totalT)
+					{
+						(*jobList)[jobI].ID = jobI;
+						jobQue.push(&((*jobList)[jobI])); //ensures job is not added to que until it arrives
+						(*jobList)[jobI].acknowledged = true; //ensures job is not added more than once to que
+					}
+				}
+				if(!jobQue.empty())
+				{
+					running = jobQue.top();
+					jobQue.pop(); //que is wierd and front is like peek and, pop returns void?					
+					buffer = running->run(); //run til completion == run(durationT)
+					outputGraph[1+running->ID].resize(buffer.size()+totalT,' ');
+					for(int inner = 0; inner < buffer.size(); inner++)
+					{
+						outputGraph[1+running->ID][totalT] = buffer[inner];
+						totalT++;
+					}
+				}
+				else
+				{
+					totalT++;
+				}
+			}while(remainingT > 0);
+		}
+};
+
 class OS
 {
 	public:
@@ -349,7 +425,7 @@ class OS
 					break;
 
 				case hrrn:
-
+						return new scheduleHRRN(&jobList);
 					break;
 
 				case fb:
