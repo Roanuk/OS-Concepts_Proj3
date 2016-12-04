@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <queue>
+#include <iostream>
 
 #define FCFS "FCFS"
 #define RR "RR"
@@ -14,6 +15,9 @@
 #define HRRN "HRRN"
 #define FB "FB"
 #define BUFFER_SIZE 64
+#define FB_Queue_Count 3
+#define FB_Quantum 1
+
 using namespace std;
 enum SchedulerType { fcfs, rr, spn, srt, hrrn, fb};
 typedef struct jobStruct
@@ -41,9 +45,11 @@ class Job
 		int arrivalT, durationT, executionT, ID;
 		bool acknowledged;
 		int* totalTp;
+		int nextQue;
 		Job(string Name, int ArrivalT, int DurationT) : name(Name), arrivalT(ArrivalT), durationT(DurationT)
 		{
 			executionT = 0;
+			nextQue = 0;
 			acknowledged = false;
 		}
 		
@@ -94,10 +100,8 @@ class LargestResponseNext
 		{
 			float aResponseT =  *(a->totalTp) - a->arrivalT + a->durationT;
 			aResponseT /= a->durationT;
-			//printf("%c:[tT(%i)-aT(%i)+dT(%i)]/dT(%i)=rT(%f)\n", a->name[0], *(a->totalTp), a->arrivalT, a->durationT, a->durationT,aResponseT);
 			float bResponseT =  *(b->totalTp) - b->arrivalT + b->durationT;	
 			bResponseT /= b->durationT;		
-			//printf("%c:[tT(%i)-aT(%i)+dT(%i)]/dT(%i)=rT(%f)\n", b->name[0], *(b->totalTp), b->arrivalT, b->durationT, b->durationT,bResponseT);
 			if(aResponseT == bResponseT)
 			{
 				return a->arrivalT > b->arrivalT; //return longest waiting with priority if remaining time is equal
@@ -278,7 +282,7 @@ class scheduleSRT : public Scheduler
 			}
 			priority_queue<Job*,vector<Job*>,ShortestNext> jobQue;
 			Job* running = NULL;
-			int remainingT, totalT = 0, timeTilNext;				
+			int remainingT, totalT = 0, timeTilNext = 1000000000;				
 			do{				
 				remainingT = 0;
 				for(int jobI = 0; jobI < (*jobList).size(); jobI++)
@@ -299,7 +303,7 @@ class scheduleSRT : public Scheduler
 				if(!jobQue.empty())
 				{
 					running = jobQue.top();
-					jobQue.pop(); //que is wierd and front is like peek and, pop returns void?					
+					jobQue.pop(); //que is wierd and front is like peek and, pop returns void?	
 					buffer = running->run(min(timeTilNext, running->durationT - running->executionT)); //min is redundant verification of not over running
 					outputGraph[1+running->ID].resize(buffer.size()+totalT,' ');
 					for(int inner = 0; inner < buffer.size(); inner++)
@@ -373,6 +377,77 @@ class scheduleHRRN : public Scheduler
 		}
 };
 
+class scheduleFB : public Scheduler
+{
+	public:
+		scheduleFB(vector<Job>* JobList) : Scheduler(JobList) {}
+
+		void processJobs()
+		{
+			string buffer = "Feedback Graph";
+			outputGraph[0].resize(buffer.size(),' ');
+			for(int i = 0; i < buffer.size(); i++)
+			{
+				outputGraph[0][i] = buffer[i];
+			}
+			queue<Job*> jobQue[FB_Queue_Count]; 
+			Job* running = NULL;
+			int remainingT, totalT = 0;				
+			do{				
+				remainingT = 0;
+				for(int jobI = 0; jobI < (*jobList).size(); jobI++)
+				{
+					remainingT += (*jobList)[jobI].durationT;
+					remainingT -= (*jobList)[jobI].executionT;
+					if(!(*jobList)[jobI].acknowledged && (*jobList)[jobI].arrivalT <= totalT)
+					{
+						(*jobList)[jobI].ID = jobI;
+						jobQue[0].push(&((*jobList)[jobI])); //ensures job is not added to que until it arrives
+						(*jobList)[jobI].acknowledged = true; //ensures job is not added more than once to que
+					}
+				}
+				for(int que = 0; que <= FB_Queue_Count; que++)
+				{
+					if( que < FB_Queue_Count && !jobQue[que].empty())
+					{
+						if(running && running->durationT > running->executionT)
+						{
+							jobQue[running->nextQue].push(running);
+						}
+						running = jobQue[que].front();
+						jobQue[que].pop(); //que is wierd and front is like peek and, pop returns void?					
+						running->nextQue = min(FB_Queue_Count - 1, running->nextQue + 1);
+						buffer = running->run(FB_Quantum);
+						outputGraph[1+running->ID].resize(buffer.size()+totalT,' ');
+						for(int inner = 0; inner < buffer.size(); inner++)
+						{
+							outputGraph[1+running->ID][totalT] = buffer[inner];
+							totalT++;
+						}
+						break;
+					}
+					else if(que == FB_Queue_Count)
+					{
+						if(running && running->durationT > running->executionT)
+						{
+							buffer = running->run(FB_Quantum);
+							outputGraph[1+running->ID].resize(buffer.size()+totalT,' ');
+							for(int inner = 0; inner < buffer.size(); inner++)
+							{
+								outputGraph[1+running->ID][totalT] = buffer[inner];
+								totalT++;
+							}
+						}
+						else
+						{
+							totalT++;
+						}
+					}
+				}
+			}while(remainingT > 0);
+		}
+};
+
 class OS
 {
 	public:
@@ -429,7 +504,7 @@ class OS
 					break;
 
 				case fb:
-
+						return new scheduleFB(&jobList);
 					break;
 			}
 		}
@@ -465,6 +540,11 @@ int main (int argc, char* argv[])
 	}
 	else if (schedulerString == RR)
 	{
+		if(quantum == 0)
+		{
+			printf("Round Robin requires a nonzero third argument specifying the quantum size.\n");
+			return 1; //failure
+		}
 		schedulerType = rr;
 	}
 	else if (schedulerString == SPN)
